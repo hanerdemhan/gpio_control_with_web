@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raspberry Pi GPIO Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+        }
+        .status {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        #charge-timer {
+            margin-top: 10px;
+            font-size: 18px;
+            color: green;
+        }
+        #charge-message {
+            margin-top: 5px;
+            font-size: 16px;
+            color: blue;
+        }
+    </style>
+    <script>
+        wait_time = 600;
+        let chargeTimer;  // Timer'ı dışarıda tanımlıyoruz, tüm uygulama boyunca erişilebilir olacak
+        let chargeTimeLeft = wait_time; // Başlangıçta 10 dak beklemesi gerekiyor
+        let chargeCompleted = false;  // Charge tamamlanıp tamamlanmadığını kontrol etmek için
+
+function startChargeTimer() {
+    chargeTimeLeft = wait_time;  // Timer'ı sıfırla
+    document.getElementById('charge-timer').innerText = `Charge: ${chargeTimeLeft}s`;
+    chargeCompleted = false;  // Yeni bir şarj başlatıldı, tamamlanmadı
+
+    chargeTimer = setInterval(() => {
+        if (chargeTimeLeft > 0) {
+            chargeTimeLeft--;
+            document.getElementById('charge-timer').innerText = `Charge: ${chargeTimeLeft}s`;
+        } else {
+            if (!chargeCompleted) {
+                chargeCompleted = true;
+                document.getElementById('charge-timer').innerText = 'Charge Completed!';
+            }
+            clearInterval(chargeTimer);  // Timer'ı durdur
+        }
+    }, 1000);
+}
+
+function togglePin(pinName) {
+    fetch(`/toggle/${pinName}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "success") {
+                updateButtonStatus(data.pin_states);
+
+                if (pinName === "charge") {
+                    // Charge açıldığında timer başlat
+                    if (data.pin_states.charge) {
+                        startChargeTimer();
+                    } else {
+                        // Charge kapatıldığında timer sıfırlansın
+                        chargeTimeLeft = 0;
+                        document.getElementById('charge-timer').innerText = 'Charge: 0s';
+                        clearInterval(chargeTimer);
+                        chargeCompleted = false;  // Charge tamamlanmadığı için mesajı göstermekten kaçın
+                    }
+                }
+            } else {
+                alert(data.message || "An error occurred.");
+            }
+        })
+        .catch(error => {
+            console.error("Error toggling pin:", error);
+        });
+}
+
+        function updateButtonStatus(pinStates) {
+            document.getElementById("charge-status").innerText = pinStates.charge ? "ON" : "OFF";
+            document.getElementById("discharge-status").innerText = pinStates.discharge ? "ON" : "OFF";
+            document.getElementById("power-status").innerText = pinStates.power ? "ON" : "OFF";
+
+            // Timer kontrolü
+            if (!pinStates.charge) {
+                stopChargeTimer();
+            }
+        }
+
+        function stopChargeTimer() {
+            if (chargeTimer) {
+                clearInterval(chargeTimer);
+                chargeTimer = null;
+                document.getElementById('charge-timer').innerText = "";
+                document.getElementById('charge-message').innerText = "";
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const initialStates = JSON.parse('{{ pin_states|tojson|safe }}');
+            updateButtonStatus(initialStates);
+        });
+
+    </script>
+</head>
+<body>
+    <h1>Raspberry Pi GPIO Control</h1>
+    <div>
+        <button onclick="togglePin('charge');">Toggle Charge</button>
+        <span id="charge-status" class="status">OFF</span>
+        <div id="charge-timer">Elapsed Time: 00:00</div>
+        <div id="charge-message"></div>
+    </div>
+    <div>
+        <button onclick="togglePin('power')">Toggle Power</button>
+        <span id="power-status" class="status">OFF</span>
+    </div>
+    <div>
+        <button onclick="togglePin('discharge')">Toggle Discharge</button>
+        <span id="discharge-status" class="status">OFF</span>
+    </div>
+</body>
+</html>
